@@ -4,6 +4,7 @@ import * as z from "zod"
 import { logZodErrors } from "@usos/utils"
 import { ExpressError } from "./error"
 import { usos } from "./oauth"
+import { redis } from "./redis"
 
 function parseTokens(response: URLSearchParams) {
   const result = z
@@ -24,7 +25,6 @@ function parseTokens(response: URLSearchParams) {
 }
 
 const oauth = usos["UKEN"]
-let oauth_secret: string
 
 const authRouter = Router()
 
@@ -40,7 +40,7 @@ authRouter.get("/login", async (req, res) => {
 
   const { token, secret } = parseTokens(response)
 
-  oauth_secret = secret
+  redis.setEx(`request:${token}`, 60 * 10, secret)
 
   res.redirect(`${oauth.url}/services/oauth/authorize?oauth_token=${token}`)
 })
@@ -53,6 +53,11 @@ authRouter.get("/callback", async (req, res) => {
     })
     .parse(req.query)
 
+  const oauth_secret = await redis.get(`request:${oauth_token}`)
+  await redis.del(`request:${oauth_token}`)
+  if (!oauth_secret)
+    throw new ExpressError("Login session expired or invalid", 400)
+
   const response = await oauth.request(
     {
       endpoint: "oauth/access_token",
@@ -61,7 +66,7 @@ authRouter.get("/callback", async (req, res) => {
     { key: oauth_token, secret: oauth_secret },
   )
 
-  const { token, secret } = parseTokens(response)
+  const token = parseTokens(response)
 
   res.send("OK")
 })
