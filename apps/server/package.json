@@ -13,6 +13,9 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "@usos/utils": "workspace:*",
+    "express": "^5.2.1",
+    "oauth-1.0a": "^2.2.6",
+    "zod": "^4.4.3"
   }
 }
