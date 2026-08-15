@@ -2,7 +2,10 @@
   "name": "usos",
   "type": "module",
   "private": true,
-  "scripts": {},
+  "scripts": {
+    "dev:server": "bun --filter server dev",
+    "start:server": "bun --filter server start"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
