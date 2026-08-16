@@ -13,6 +13,8 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@trpc/server": "^11.18.0",
+    "@usos/api": "workspace:*",
     "@usos/utils": "workspace:*",
     "express": "^5.2.1",
     "oauth-1.0a": "^2.2.6",
