@@ -1,72 +1,59 @@
 import { env } from "./env"
 import { Router } from "express"
 import * as z from "zod"
-import { logZodErrors } from "@usos/utils"
 import { ExpressError } from "./error"
 import { usos } from "./oauth"
 import { redis } from "./redis"
-
-function parseTokens(response: URLSearchParams) {
-  const result = z
-    .object({
-      token: z.string(),
-      secret: z.string(),
-    })
-    .safeParse({
-      token: response.get("oauth_token"),
-      secret: response.get("oauth_token_secret"),
-    })
-
-  if (!result.success) {
-    logZodErrors("OAuth token parsing failed:", result.error)
-    throw new ExpressError("Invalid tokens received from OAuth server", 502)
-  }
-  return result.data
-}
 
 const oauth = usos["UKEN"]
 
 const authRouter = Router()
 
 authRouter.get("/login", async (req, res) => {
-  const response = await oauth.request({
+  const { key, secret } = await oauth.requestToken({
     endpoint: "oauth/request_token",
-    data: { oauth_callback: `${env.APP_URL}:${env.PORT}/auth/callback` },
+    data: {
+      oauth_callback: `${env.APP_URL}:${env.PORT}/auth/callback`,
+      scopes: "studies",
+    },
   })
 
-  if (response.get("oauth_callback_confirmed") !== "true") {
-    throw new ExpressError("OAuth server failed to confirm callback", 502)
-  }
+  redis.setEx(`request:${key}`, 60 * 10, secret)
 
-  const { token, secret } = parseTokens(response)
-
-  redis.setEx(`request:${token}`, 60 * 10, secret)
-
-  res.redirect(`${oauth.url}/services/oauth/authorize?oauth_token=${token}`)
+  res.redirect(`${oauth.url}/services/oauth/authorize?oauth_token=${key}`)
 })
 
 authRouter.get("/callback", async (req, res) => {
-  const { oauth_token, oauth_verifier } = z
+  const { oauth_token: key, oauth_verifier } = z
     .object({
       oauth_token: z.string(),
       oauth_verifier: z.string(),
     })
     .parse(req.query)
 
-  const oauth_secret = await redis.get(`request:${oauth_token}`)
-  await redis.del(`request:${oauth_token}`)
-  if (!oauth_secret)
-    throw new ExpressError("Login session expired or invalid", 400)
+  const secret = await redis.get(`request:${key}`)
+  await redis.del(`request:${key}`)
+  if (!secret) throw new ExpressError("Login session expired or invalid", 400)
 
-  const response = await oauth.request(
+  const token = await oauth.requestToken(
     {
       endpoint: "oauth/access_token",
       data: { oauth_verifier },
     },
-    { key: oauth_token, secret: oauth_secret },
+    { key, secret },
   )
 
-  const token = parseTokens(response)
+  const sessionId = crypto.randomUUID()
+  const age = 60 * 60 * 24 * 14
+
+  await redis.setEx(`session:${sessionId}`, age, JSON.stringify(token))
+
+  res.cookie("session", sessionId, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 1000 * age,
+  })
 
   res.send("OK")
 })

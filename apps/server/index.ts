@@ -1,14 +1,16 @@
 import { env } from "./env"
-import * as trpcExpress from "@trpc/server/adapters/express"
+import cookieParser from "cookie-parser"
 import express from "express"
-import { appRouter } from "@usos/api"
 import authRouter from "./auth"
 import { errorHandler } from "./error"
+import { trpcMiddleware } from "./trpc"
 
 const app = express()
+app.use(cookieParser())
 
 app.use("/auth", authRouter)
-app.use("/trpc", trpcExpress.createExpressMiddleware({ router: appRouter }))
+
+app.use("/trpc", trpcMiddleware)
 
 app.use(errorHandler)
 
